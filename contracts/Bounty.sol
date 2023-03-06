@@ -1,7 +1,9 @@
-//SPDX-License-Identifier: UNLICENSED pragma solidity ^0.8.0;
+//SPDX-License-Identifier: MIT
 
-import "OpenZeppelin/openzeppelin-solidity/contracts/utils/math/SafeMath.sol";
-import "OpenZeppelin/openzeppelin-solidity/contracts/access/Ownable.sol";
+pragma solidity ^0.8.0;
+
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/math/SafeMath.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/Ownable.sol";
 
 // Escrow contract that allows a bounty owner to create a bounty, deposit the funds for the bounty, and approve a request from a marketer to accept the bounty
 // Once the bounty owner approves the marketer, the funds are locked until both the bounty owner and the marketer confirm the bounty has been fulfilled
@@ -11,6 +13,7 @@ import "OpenZeppelin/openzeppelin-solidity/contracts/access/Ownable.sol";
 contract Escrow is Ownable {
     using SafeMath for uint;
 
+
     // Struct to represent a bounty
     struct Bounty {
         bool confirmed;
@@ -18,7 +21,7 @@ contract Escrow is Ownable {
         address bountyOwner;
         address marketer;
         uint amount;
-        address language;
+        address payable language;
     }
 
     // Mapping from bounty IDs to bounties
@@ -65,12 +68,15 @@ contract Escrow is Ownable {
     bountyTokenBalances[bountyId] = tokenAmount;
 
     // Transfer the bounty amount and token balances to the contract
-    require(msg.sender.transfer(amount), "Failed to transfer bounty amount");
-    require(language.transfer(tokenAmount), "Failed to transfer token balance");
-
-    // Emit the NewBounty event
-    emit NewBounty(bountyId, msg.sender, amount, expirationTime, language, tokenAmount);
+    if (payable(msg.sender).send(amount)) {
+        emit NewBounty(bountyId, msg.sender, amount, expirationTime, language, tokenAmount);
+    } else {
+        revert("Failed to transfer bounty amount");
+    }
+    
+    require(payable(language).send(tokenAmount), "Failed to transfer token balance");
 }
+
 
 // Allows a marketer to request to accept a bounty
 function requestToAcceptBounty(uint bountyId) public {
@@ -79,7 +85,7 @@ function requestToAcceptBounty(uint bountyId) public {
 
     // Check that the bounty has not been cancelled, that the expiration time has not been reached, and that the caller is not the bounty owner
     require(!bounty.confirmed, "Bounty has already been confirmed");
-    require(bounty.expirationTime >= now, "Bounty has expired");
+    require(bounty.expirationTime >= block.timestamp, "Bounty has expired");
     require(bounty.bountyOwner != msg.sender, "Caller is the bounty owner");
 
     // Set the marketer to the caller
@@ -101,7 +107,7 @@ function requestToAcceptBounty(uint bountyId) public {
         Bounty storage bounty = bounties[bountyId];
 
         // Check that the bounty has not been cancelled, that the expiration time has not been reached, and that the caller is the bounty owner
-        require(bounty.expirationTime >= now, "Bounty has expired");
+        require(bounty.expirationTime >= block.timestamp, "Bounty has expired");
         require(bounty.bountyOwner == msg.sender, "Caller is not the bounty owner");
 
         // Emit the BountyApproved event
@@ -109,27 +115,31 @@ function requestToAcceptBounty(uint bountyId) public {
     }
 
         // Confirm that the bounty has been fulfilled by both the bounty owner and the marketer
-    function confirmFulfillment(uint bountyId) public {
-        // Get the bounty
-        Bounty storage bounty = bounties[bountyId];
+function confirmFulfillment(uint bountyId) public {
+    // Get the bounty
+    Bounty storage bounty = bounties[bountyId];
 
-        // Check that the caller is the bounty owner or the marketer
-        require(bounty.bountyOwner == msg.sender || bounty.marketer == msg.sender, "Caller is not the bounty owner or marketer");
+    // Check that the caller is the bounty owner or the marketer
+    require(bounty.bountyOwner == msg.sender || bounty.marketer == msg.sender, "Caller is not the bounty owner or marketer");
 
-        // Check that the bounty has been confirmed and that the expiration time has not been reached
-        require(bounty.confirmed, "Bounty has not been confirmed");
-        require(bounty.expirationTime >= now, "Bounty has expired");
+    // Check that the bounty has been confirmed and that the expiration time has not been reached
+    require(bounty.confirmed, "Bounty has not been confirmed");
+    require(bounty.expirationTime >= block.timestamp, "Bounty has expired");
 
-        // Transfer the bounty amount minus the fee to the marketer
-        uint fee = bounty.amount.mul(5).div(100);
-        require(bounty.language.transfer(bounty.amount.sub(fee)), "Failed to transfer funds to marketer");
+    // Transfer the bounty amount minus the fee to the marketer
+    uint fee = bounty.amount.mul(5).div(100);
+    uint amountToTransfer = bounty.amount.sub(fee);
+    require (amountToTransfer > 0, "Bounty amount is not enough to cover the fee");
+    require (address(this).balance >= amountToTransfer, "Contract balance is not enough to cover the transfer");
+    payable(bounty.marketer).transfer(amountToTransfer);
 
-        // Update the fee balance
-        feeBalance = feeBalance.add(fee);
+    // Update the fee balance
+    feeBalance = feeBalance.add(fee);
 
-        // Emit the BountyFulfilled event
-        emit BountyFulfilled(bountyId, bounty.marketer);
-    }
+    // Emit the BountyFulfilled event
+    emit BountyFulfilled(bountyId, bounty.marketer);
+}
+
 
     // Allows the contract owner to withdraw the fees collected
     function withdrawFees() public onlyOwner {
@@ -140,7 +150,7 @@ function requestToAcceptBounty(uint bountyId) public {
         feeBalance = 0;
 
         // Transfer the current fee balance to the contract owner
-        require(msg.sender.transfer(currentFeeBalance), "Failed to transfer fees to contract owner");
+        require(payable(msg.sender).send(currentFeeBalance), "Failed to transfer fees to contract owner");
 
         // Emit the FeesWithdrawn event
         emit FeesWithdrawn(currentFeeBalance);
