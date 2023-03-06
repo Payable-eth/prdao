@@ -1,8 +1,7 @@
-//SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+//SPDX-License-Identifier: UNLICENSED pragma solidity ^0.8.0;
 
-import "https://github.com/OpenZeppelin/openzeppelin-solidity/contracts/utils/math/SafeMath.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-solidity/contracts/access/Ownable.sol";
+import "OpenZeppelin/openzeppelin-solidity/contracts/utils/math/SafeMath.sol";
+import "OpenZeppelin/openzeppelin-solidity/contracts/access/Ownable.sol";
 
 // Escrow contract that allows a bounty owner to create a bounty, deposit the funds for the bounty, and approve a request from a marketer to accept the bounty
 // Once the bounty owner approves the marketer, the funds are locked until both the bounty owner and the marketer confirm the bounty has been fulfilled
